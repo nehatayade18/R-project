@@ -1,0 +1,249 @@
+---
+title: "MP1"
+author: "Neha"
+date: "2/26/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(tidycensus)
+library(ggplot2)
+library(viridis)
+```
+
+#Loading data from all files:
+```{r}
+#State_and_US_SA.xls
+state_hpi <- data.frame(read_excel('State_and_US_SA.xls', range = "B6:BA546" ), stringsAsFactors = FALSE)
+state_hpi['Period'] <- data.frame(read_excel('State_and_US_SA.xls', range = "A6:A546" ))
+col_idx <- grep("Period", names(state_hpi))
+state_hpi <- state_hpi[, c(col_idx, (1:ncol(state_hpi))[-col_idx])]
+state_hpi <- transform(state_hpi, Year = substr(Period, 1, 4), Period = substr(Period, 5, 7), stringsAsFactors = FALSE)
+state_hpi
+
+#Regions
+reg <- read.delim("state_abbrevs.txt", header = TRUE, sep = "")
+#reg
+
+#statecodes.txt
+state_code <- read.delim("statecodes.txt", header = FALSE, sep = "")
+names(state_code) = c("Code","State","State Name")
+state_code <- as.data.frame(state_code)
+state_code$State <- as.character(state_code$State)
+#state_code
+
+#cpi.csv
+cpi <- as.data.frame(read.csv("cpi.csv", header=TRUE, check.names = FALSE), stringsAsFactors = FALSE)
+#cpi
+```
+
+
+```{r}
+census_api_key("2ef1443c8d118b94fc9480cf08446b43b51b0451", overwrite  = TRUE)
+pop_1990 <- get_decennial(geography = "state", variables = "P0010001", year = 1990)
+pop_2000 <- get_decennial(geography = "state", variables = "P001001", year = 2000)
+pop_2010 <- get_decennial(geography = "state", variables = "P001001", year = 2010)
+pop_2018 <- get_estimates(geography = "state",product = "population",year = 2018)
+pop_2018 <-  subset(pop_2018, variable!="DENSITY" )
+
+
+#Removing the state names : District of Columbia and Puerto Rico
+pop_1990=subset(pop_1990, NAME!="District of Columbia" & NAME!="Puerto Rico")
+pop_2000=subset(pop_2000, NAME!="District of Columbia" & NAME!="Puerto Rico")
+pop_2010=subset(pop_2010, NAME!="District of Columbia"  & NAME!="Puerto Rico")
+pop_2018=subset(pop_2018, NAME!="District of Columbia"  & NAME!="Puerto Rico")
+
+# sorting with alphabetical order 
+pop_1990 = with(pop_1990, pop_1990[order(NAME),])
+pop_2000 = with(pop_2000, pop_2000[order(NAME),])
+pop_2010 = with(pop_2010, pop_2010[order(NAME),])
+pop_2018 = with(pop_2018, pop_2018[order(NAME),])
+states = c(pop_1990$NAME)
+
+# population difference 
+pop_increase1990 = pop_2000$value - pop_1990$value
+pop_increase2000 = pop_2010$value - pop_2000$value
+pop_increase2010 = pop_2018$value - pop_2010$value
+
+#Population increase in the three intervals: 1990 to 2000, 2000 to 2010 and 2010 to present
+pop_increase1990 <- as.data.frame(cbind(states, pop_increase1990))
+pop_increase2000 <- as.data.frame(cbind(states, pop_increase2000))
+pop_increase2010 <- as.data.frame(cbind(states, pop_increase2010))
+
+```
+
+```{r}
+state_hpi <- data.frame(read_excel('State_and_US_SA.xls', range = "B6:BA546" ), stringsAsFactors = FALSE)
+Period <- data.frame(read_excel('State_and_US_SA.xls', range = "A6:A546" ))
+state_hpi <- cbind(Period, state_hpi)
+state_hpi <- transform(state_hpi, Year = substr(Month, 1, 4), Month = substr(Month, 5, 7), stringsAsFactors = FALSE)
+col_idx <- grep("Year", names(state_hpi))
+state_hpi <- state_hpi[, c(col_idx, (1:ncol(state_hpi))[-col_idx])]
+state_hpi <- subset(state_hpi,subset = ((Year %in% c(1990,2000,2010) & Month %in% c('M01'))) | (Year %in% c(1999,2009,2018) & Month %in% c('M12')))
+state_hpi <- state_hpi[ -c(54)]
+state_hpi
+```
+```{r}
+hpi <- state_hpi %>% gather(state_hpi, House_price, AK:WY)
+hpi <- subset(hpi, state_hpi!="DC")
+state_code = with(state_code, state_code[order(State),])
+hpi
+```
+
+```{r}
+hpi_90 <- subset(hpi,(Year == 1990 ))
+hpi_99 <- subset(hpi,(Year == 1999 ))
+
+hpi_00 <- subset(hpi,(Year == 2000 ))
+hpi_09 <- subset(hpi,(Year == 2009 ))
+
+hpi_10 <- subset(hpi,(Year == 2010 ))
+hpi_18 <- subset(hpi,(Year == 2018 ))
+
+#Difference in prices
+hpi_increase_90 <- hpi_99$House_price - hpi_90$House_price
+hpi_increase_00 <- hpi_09$House_price - hpi_00$House_price
+hpi_increase_10 <- hpi_18$House_price - hpi_10$House_price
+
+#Statewise housing prices difference dataframe
+hpi_increase_90 <- as.data.frame(cbind(states,hpi_increase_90))
+hpi_increase_00 <- as.data.frame(cbind(states,hpi_increase_00))
+hpi_increase_10 <- as.data.frame(cbind(states,hpi_increase_10))
+#hpi_increase_90
+```
+
+```{r}
+# Dataframe for 1990 to 2000
+pd_vs_hpi_1990 <- merge.data.frame(pop_increase1990, hpi_increase_90)
+pd_vs_hpi_1990
+```
+
+```{r}
+# Dataframe for 2000 to 2010
+pd_vs_hpi_2000 <- merge.data.frame(pop_increase2000, hpi_increase_00)
+pd_vs_hpi_2000
+```
+
+```{r}
+# Dataframe for 2010 to present
+pd_vs_hpi_2010 <- merge.data.frame(pop_increase2010, hpi_increase_10)
+pd_vs_hpi_2010
+```
+
+Plotting the graphs:
+```{r}
+ggplot(pd_vs_hpi_1990, aes(y = as.numeric(hpi_increase_90), x = as.numeric(pop_increase1990))) + geom_point(alpha = 0.5) + 
+  geom_smooth(method="loess",span=0.6,se=FALSE) + scale_color_viridis() + 
+  labs(title = "Relationship between Population density and Housing Prices", subtitle = "Dependent on State and Region", y = "", color = "states")  +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 8)) + 
+  scale_x_continuous()
+```
+```{r}
+ggplot(pd_vs_hpi_2000, aes(y = as.numeric(hpi_increase_00), x = as.numeric(pop_increase2000))) + geom_point(alpha = 0.5) + 
+  geom_smooth(method="loess",span=0.6,se=FALSE) + scale_color_viridis() + 
+  labs(title = "Relationship between Population density and Housing Prices", subtitle = "Dependent on State and Region", y = "", color = "states")  +  
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 8)) + 
+  scale_x_continuous()
+```
+
+```{r}
+ggplot(pd_vs_hpi_2010, aes(y = as.numeric(hpi_increase_10), x = as.numeric(pop_increase2010))) + geom_point(alpha = 0.5) + 
+  geom_smooth(method="loess",span=0.6,se=FALSE)+ scale_color_viridis() + 
+  labs(title = "Relationship between Population density and Housing Prices", subtitle = "Dependent on State and Region", y = "", color = "states")  +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 8)) + 
+  scale_x_continuous()
+```
+
+```{r}
+pd_vs_hpi <- merge.data.frame(merge.data.frame(pd_vs_hpi_1990,pd_vs_hpi_2000), pd_vs_hpi_2010)
+pd_vs_hpi
+```
+
+
+```{r}
+reg <- subset(reg, State!="District of Columbia")
+reg = with(reg, reg[order(State),])
+reg
+```
+```{r}
+pd_vs_hpi_1990['Interval'] <- ('1990-2000')
+pd_vs_hpi_1990 <- pd_vs_hpi_1990 %>% rename(Population_increase = `pop_increase1990` )
+pd_vs_hpi_1990 <- pd_vs_hpi_1990 %>% rename(  Houseprice_increase = `hpi_increase_90` )
+
+pd_vs_hpi_2000['Interval'] <- ('2000-2010')
+pd_vs_hpi_2000 <- pd_vs_hpi_2000 %>% rename(  Population_increase = `pop_increase2000` )
+pd_vs_hpi_2000 <- pd_vs_hpi_2000 %>% rename(  Houseprice_increase = `hpi_increase_00` )
+
+pd_vs_hpi_2010['Interval'] <- ('2010-2020')
+pd_vs_hpi_2010 <- pd_vs_hpi_2010 %>% rename( Population_increase = `pop_increase2010`)
+pd_vs_hpi_2010 <- pd_vs_hpi_2010 %>% rename(Houseprice_increase = `hpi_increase_10` )
+
+
+```
+
+```{r}
+pd_vs_hpi <- rbind(pd_vs_hpi_1990, pd_vs_hpi_2000, pd_vs_hpi_2010)
+pd_vs_hpi$Population_increase <- as.numeric(pd_vs_hpi$Population_increase)
+pd_vs_hpi$Houseprice_increase <- as.numeric(pd_vs_hpi$Houseprice_increase)
+#pd_vs_hpi$states <- as.factor(pd_vs_hpi$Houseprice_increase)
+pd_vs_hpi
+```
+```{r}
+ggplot(pd_vs_hpi, aes(y = Houseprice_increase, x = Population_increase), color = "states") + geom_point(alpha = 0.5) + 
+  geom_smooth(method="loess",span=0.6,se=FALSE)+ scale_color_viridis() + 
+  labs(title = "Relationship between Population density and Housing Prices", subtitle = "Dependent on State and Region", y = "", color = "states")  + facet_wrap(~as.factor(Interval))+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 8)) + 
+  scale_x_continuous()
+```
+
+```{r}
+pd_vs_hpi['Region'] <- reg$Region
+pd_vs_hpi['State_code'] <- as.character(reg$State)
+pd_vs_hpi
+```
+
+```{r}
+pd_vs_hpi_midwest <- subset(pd_vs_hpi, Region =='Midwest')
+
+ggplot(pd_vs_hpi_midwest, aes(y = Houseprice_increase, x = Population_increase, label = pd_vs_hpi_midwest$State_code)) + 
+  geom_point(alpha = 0.5, label=pd_vs_hpi_midwest$State_code) + 
+  geom_smooth(method="loess",span=0.6,se=FALSE)+ scale_color_viridis() + 
+  labs(title = "Relationship between Population density and Housing Prices", subtitle = "Dependent on State and Midwest Region", y = "Change in Housing Prices", color = states, x= "Changes in Population density")  + facet_wrap(~as.factor(Interval))+ #scale_x_log10()+ scale_y_log10()+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 8)) + 
+  scale_x_continuous()
+```
+
+```{r}
+pd_vs_hpi_ne <- subset(pd_vs_hpi, Region =='Northeast')
+
+ggplot(pd_vs_hpi_ne, aes(y = Houseprice_increase, x = Population_increase, label=as.character(states))) + geom_point(alpha = 0.5, label=as.character(states)) + 
+  geom_smooth(method="loess",span=0.6,se=FALSE)+ scale_color_viridis() + 
+  labs(title = "Relationship between Population density and Housing Prices", subtitle = "Dependent on State and Northeast Region",y = "Change in Housing Prices", color = "states", x= "Changes in Population density")  + facet_wrap(~as.factor(Interval))+ #scale_x_log10()+ scale_y_log10()+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 8)) + 
+  scale_x_continuous()
+```
+```{r}
+pd_vs_hpi_s <- subset(pd_vs_hpi, Region =='South')
+
+ggplot(pd_vs_hpi_s, aes(y = Houseprice_increase, x = Population_increase)) + geom_point(alpha = 0.5, label=as.character(states)) + 
+  geom_smooth(method="loess",span=0.6,se=FALSE)+ scale_color_viridis() + 
+  labs(title = "Relationship between Population density and Housing Prices", subtitle = "Dependent on State and South Region", y = "Change in Housing Prices", color = "states", x= "Changes in Population density")  + facet_wrap(~as.factor(Interval))+ #scale_x_log10()+ scale_y_log10()+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 8)) + 
+  scale_x_continuous()
+```
+```{r}
+pd_vs_hpi_w <- subset(pd_vs_hpi, Region =='West')
+
+ggplot(pd_vs_hpi_w, aes(y = Houseprice_increase, x = Population_increase, label=(states))) + geom_point(alpha = 0.5, label=as.character(states)) + 
+  geom_smooth(method="loess",span=0.6,se=FALSE)+ scale_color_viridis() + 
+  labs(title = "Relationship between Population density and Housing Prices", subtitle = "Dependent on State and West Region", y = "Change in Housing Prices", color = "states", x= "Changes in Population density")  + facet_wrap(~as.factor(Interval))+ #scale_x_log10()+ scale_y_log10()+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 8)) + 
+  scale_x_continuous()
+```
+
